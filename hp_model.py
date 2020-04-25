@@ -1,15 +1,15 @@
-import tensorflow as tf
 from keras.layers import Dense
 from keras.models import Sequential
+from keras.optimizers import RMSprop
+from keras.wrappers.scikit_learn import KerasClassifier
 
-# Callback function
-DESIRED_ACCURACY = 0.99
 
-
-def compile_fit(x, y):
+def create_model(input_dims=227):
     model = Sequential()
-    model.add(Dense(8, input_dim=37, activation='relu'))
+    model.add(Dense(8, input_dim=input_dims, activation='relu'))
     model.add(Dense(1, activation='linear'))
-    model.compile(loss='mse', optimizer=tf.keras.optimizers.RMSprop(0.001), metrics=['mse'])
-    model.fit(x, y, epochs=10, batch_size=10)
-    return model
+    model.compile(loss='mse', optimizer=RMSprop(0.001), metrics=['mse'])
+    my_model = KerasClassifier(build_fn=model, epochs=50, batch_size=10, verbose=0)
+    return my_model
+
+

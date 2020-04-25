@@ -1,47 +1,75 @@
+#%%
 import pandas as pd
-import refine_data as rd
 import hp_model as hpm
-from sklearn.model_selection import train_test_split
-import pandas as pd
-from sklearn import preprocessing
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-
-
-def clean_data(df=None):
-    my_imputer = SimpleImputer()
-    min_max_scalar = preprocessing.MinMaxScaler()
-
-    df = df.select_dtypes(include=['number'])
-    col_names = df.columns
-    df = pd.DataFrame(my_imputer.fit_transform(df))
-    df = df.astype(float)
-
-    x_scaled = min_max_scalar.fit_transform(df)
-    df = pd.DataFrame(x_scaled)
-    df.columns = col_names
-    return df
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
+import numpy as np
 
 
 
+#%%
+# Get Data Sets
 data_dir = '/Users/dev/PycharmProjects/housingprices/data_source/hp/'
-test_df = pd.read_csv(data_dir + 'test.csv')
-data = pd.read_csv(data_dir + 'train.csv')
+X_full = pd.read_csv(data_dir + 'train.csv', index_col='Id')
+X_test_full = pd.read_csv(data_dir + 'test.csv', index_col='Id')
 
-data = rd.clean_data(data)
-y = data.SalePrice
-X = data.drop(['SalePrice'], axis=1)
+X_full.dropna(axis=0, subset=['SalePrice'], inplace=True)
+y = X_full.SalePrice
+X_full.drop('SalePrice', axis=1, inplace=True)
+X_train_full, X_valid_full, y_train, y_valid = train_test_split(X_full, y, train_size=0.8,
+                                                                test_size=0.2, random_state=0)
 
-X_train, X_valid, y_train, y_valid = train_test_split(X, y, train_size=0.8, test_size=0.2, random_state=0)
+#%%
+# Select categorical columns with relatively low cardinality (convenient but arbitrary)
+categorical_cols = [cname for cname in X_train_full.columns if
+                    X_train_full[cname].nunique() < 10 and
+                    X_train_full[cname].dtype == "object"]
+
+# Select numerical columns
+numerical_cols = [cname for cname in X_train_full.columns if
+                X_train_full[cname].dtype in ['int64', 'float64']]
+
+# Keep selected columns only
+my_cols = categorical_cols + numerical_cols
+X_train = X_train_full[my_cols].copy()
+X_valid = X_valid_full[my_cols].copy()
+X_test = X_test_full[my_cols].copy()
+
+#%%.
+# Data Pipeline
+
+# Numerical and Categorical Data
+numerical_transformer = SimpleImputer(strategy='mean')
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('one_hot', OneHotEncoder(handle_unknown='ignore'))
+])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numerical_transformer, numerical_cols),
+        ('cat', categorical_transformer, categorical_cols)
+    ]
+)
+
+#%%
+
+clf = Pipeline(steps=[('Preprocessor', preprocessor),
+                      ('model', hpm.create_model())
+                      ])
+
+X_numpy = X_train.to_numpy()
+y_numpy = y_train.to_numpy()
+
+clf.fit(X_numpy, y_numpy)
 
 
-# Compile NN
-# x = train_df_normalized.to_numpy()
-
-model = hpm.compile_fit(X_train, y_train)
-
+#%%
 # Make Predictions
-predictions = model.predict(test_df_normalized.to_numpy())
-# predictions = model.predict(train_df_normalized.to_numpy())
+predictions = clf.predict(X_valid)
 
 # Create Output File
 predictions = pd.DataFrame(predictions, columns=['SalePrice'])
